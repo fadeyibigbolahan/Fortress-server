@@ -31,9 +31,8 @@ const questionSchema = new mongoose.Schema(
 
     topic: {
       type: String,
-      required: true,
       trim: true,
-      maxlength: 150,
+      default: "",
     },
 
     subtopic: {

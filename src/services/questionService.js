@@ -33,9 +33,7 @@ const validateQuestionData = (data) => {
     throw createError("Invalid class level.");
   }
 
-  if (!data.topic || !data.topic.trim()) {
-    throw createError("Question topic is required.");
-  }
+  // Topic is optional.
 
   if (!data.questionText || !data.questionText.trim()) {
     throw createError("Question text is required.");
@@ -45,12 +43,14 @@ const validateQuestionData = (data) => {
     throw createError("Question type must be objective or theory.");
   }
 
-  if (
-    data.marks === undefined ||
-    !Number.isFinite(Number(data.marks)) ||
-    Number(data.marks) <= 0
-  ) {
-    throw createError("Question marks must be greater than zero.");
+  const marks = Number(data.marks);
+
+  if (data.marks === undefined || !Number.isFinite(marks) || marks < 0.5) {
+    throw createError("Question marks must be at least 0.5.");
+  }
+
+  if (!Number.isInteger(marks * 2)) {
+    throw createError("Question marks must be in increments of 0.5.");
   }
 
   if (
@@ -160,9 +160,6 @@ const getTeacherAssignments = async (teacherId) => {
 // 4. CHECK TEACHER ASSIGNMENT
 // ========================================
 
-// Used when a teacher creates a question or when
-// checking whether a question belongs to an assigned class/subject.
-
 const checkTeacherAssignmentPermission = async (
   user,
   subjectId,
@@ -203,12 +200,6 @@ const checkTeacherAssignmentPermission = async (
 // 5. CHECK QUESTION VIEW PERMISSION
 // ========================================
 
-// Teachers can view:
-// 1. Questions created by an admin.
-// 2. Questions created by themselves.
-//
-// They cannot view questions created by other teachers.
-
 const checkQuestionViewPermission = async (question, user) => {
   if (user.role === "admin") {
     return true;
@@ -224,12 +215,10 @@ const checkQuestionViewPermission = async (question, user) => {
     question.classLevel,
   );
 
-  // Teachers can always view their own questions.
   if (sameId(question.createdBy, user._id)) {
     return true;
   }
 
-  // Otherwise, the question must have been created by an admin.
   const creator = await User.findById(question.createdBy).select("role").lean();
 
   if (!creator || creator.role !== "admin") {
@@ -242,9 +231,6 @@ const checkQuestionViewPermission = async (question, user) => {
 // ========================================
 // 6. CHECK QUESTION MANAGEMENT PERMISSION
 // ========================================
-
-// Admins can manage all questions.
-// Teachers can manage only questions they created.
 
 const checkQuestionManagementPermission = async (question, user) => {
   if (user.role === "admin") {
@@ -274,9 +260,6 @@ const checkQuestionManagementPermission = async (question, user) => {
 // ========================================
 // 7. BUILD TEACHER QUESTION FILTER
 // ========================================
-
-// Returns questions matching the teacher's assignments
-// AND created by either an admin or the logged-in teacher.
 
 const applyTeacherQuestionFilter = async (query, user) => {
   if (user.role === "admin") {
@@ -311,15 +294,12 @@ const applyTeacherQuestionFilter = async (query, user) => {
 
   const adminIds = adminUsers.map((admin) => admin._id);
 
-  // Preserve existing $and conditions, such as search filters.
   query.$and = query.$and || [];
 
-  // Restrict results to assigned subjects and class levels.
   query.$and.push({
     $or: pairs,
   });
 
-  // Restrict results to admin-created questions or the teacher's own.
   query.$and.push({
     $or: [{ createdBy: user._id }, { createdBy: { $in: adminIds } }],
   });
@@ -341,7 +321,7 @@ const createQuestion = async (data, user) => {
   const question = await Question.create({
     subject: subject._id,
     classLevel: data.classLevel,
-    topic: data.topic.trim(),
+    topic: data.topic?.trim() || undefined,
     subtopic: data.subtopic?.trim() || undefined,
     questionText: data.questionText.trim(),
     questionType: data.questionType,
@@ -428,7 +408,7 @@ const getQuestions = async (filters = {}, user) => {
     query.status = status;
   }
 
-  if (topic) {
+  if (topic && topic.trim()) {
     query.topic = new RegExp(escapeRegex(topic.trim()), "i");
   }
 
@@ -564,7 +544,7 @@ const updateQuestion = async (questionId, data, user) => {
   const merged = {
     subject: nextSubject,
     classLevel: nextLevel,
-    topic: updatedData.topic ?? question.topic,
+    topic: updatedData.topic ?? question.topic ?? "",
     questionText: updatedData.questionText ?? question.questionText,
     questionType: nextQuestionType,
     options: nextOptions,
